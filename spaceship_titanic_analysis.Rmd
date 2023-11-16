@@ -1,0 +1,193 @@
+**Spaceship Titanic Analysis Project**
+
+Welcome to the year 2912, where your data science skills are needed to solve a cosmic mystery. We've received a transmission from four lightyears away and things aren't looking good.
+
+The *Spaceship Titanic* was an interstellar passenger liner launched a month ago. With almost 13,000 passengers on board, the vessel set out on its maiden voyage transporting emigrants from our solar system to three newly habitable exoplanets orbiting nearby stars.
+
+While rounding Alpha Centauri en route to its first destination---the torrid 55 Cancri E---the unwary *Spaceship Titanic* collided with a spacetime anomaly hidden within a dust cloud. Sadly, it met a similar fate as its namesake from 1000 years before. Though the ship stayed intact, almost half of the passengers were transported to an alternate dimension!
+
+To help rescue crews and retrieve the lost passengers, you are challenged to predict which passengers were transported by the anomaly using records recovered from the spaceship's damaged computer system.
+
+Help save them and change history!
+
+**Passenger Log data**
+
+```{r}
+library(tidyverse)
+space_titanic_train <- read_csv("space_titanic_train.csv")
+
+space_titanic_train
+```
+
+Based on the passenger log, we have a wide set of data to look over. However, after reviewing what information we have, the following key data points stand out:
+
+-   Transported (Was the passenger transported to another dimension?)
+
+-   Age (How old was the passenger?)
+
+-   HomePlanet (What planet was the passenger from?)
+
+-   Cabin (The cabin number the passenger was staying, for this analysis, specifically whether it was port or starboard)
+
+With this information, we should be able to determine correlations such as the average age of passengers who were transported to another dimension versus those who weren't, if the location of the cabin they were staying in had any impact on whether or not they were transported, and if there is a correlation between where their home planet and whether or not they were transported.
+
+While there are other points of interest in the data, the data points above seem to hold the most pertinent information needed for us to determine what may have happened on the Space Titanic.
+
+**Digging Into the Data**
+
+First, we'll compile a data set of all passenger ages, home planets, cabin numbers, and whether or not they were tranported.
+
+```{r}
+passenger_data <- select(group_by(space_titanic_train, Transported, Age, HomePlanet, Cabin))
+
+passenger_data
+```
+
+Now, let's see if age had anything to do with this. Were specific age ranges affected? Using a boxplot diagram, maybe we can get a better idea of this.
+
+```{r}
+ggplot(passenger_data) +
+  geom_boxplot(mapping = aes(x = Transported, y = Age, fill = Transported))
+```
+
+So it seems that age does not seem to be a major factor as to whether or not the passenger was transported, but we can extrapolate that the average age of someone who was transported was around 26, and someone who wasn't was around 28. However, it doesn't give us a clear picture of what exactly happened or why.
+
+We do have quite a few outliers with each grouping as well, so it's safe to assume that age did not have anything to do with the outcome of the passenger.
+
+So, let's see if where the passenger was from is of any importance.
+
+```{r}
+passenger_homeplanet_data <- select(group_by(space_titanic_train, HomePlanet))
+
+passenger_hp_counts <- passenger_homeplanet_data %>%
+                       drop_na() %>%
+                       count(HomePlanet)
+
+passenger_hp_counts
+```
+
+According to the data, the majority of passengers with a listed Home Planet are from Earth. Subsequently, the majority of people who were transported will also be from Earth. This is confirmed by filtering down to only passengers who were transported.
+
+```{r}
+passenger_hptranspo_data <- select(group_by(space_titanic_train, HomePlanet, Transported))
+
+passenger_transpo <- passenger_hptranspo_data %>%
+                drop_na() %>%
+                count(HomePlanet) %>%
+                filter(Transported == TRUE) %>%
+                ggplot(aes(x = HomePlanet, y = n, fill = HomePlanet)) +
+                geom_bar(stat = "identity") +
+                labs(y = "No. of Passengers Transported") +
+                geom_text(aes(label = n), position = position_dodge(width=0.9), vjust=-0.25)
+
+passenger_transpo
+```
+
+By percentage, the number of passengers transported from each planet:
+
+-   Earth: 42% of total passengers transported
+
+-   Europa: 65% of total passengers transported
+
+-   Mars: 52% of total passengers transported
+
+The data indicates that of each planet, passengers from Europa were impacted the most by the anomaly. This may be the most glaring data point we have, but it doesn't necessarily give us an idea of why they were the most impacted.
+
+Let's see if the passenger's cabin location (port or starboard) provides any further insights.
+
+```{r}
+passenger_cabin_data <- select(space_titanic_train, Transported, Cabin)
+
+
+passenger_cabport <- passenger_cabin_data %>%
+                     drop_na() %>%
+                     filter(!grepl("S$", Cabin))
+
+passenger_cabport_count <- count(passenger_cabport)
+
+passenger_cabstar <- passenger_cabin_data %>%
+                     drop_na() %>%
+                     filter(!grepl("P$", Cabin))
+
+passenger_cabstar_count <- count(passenger_cabstar)
+
+cabin_counts <- data.frame(passenger_cabport_count, passenger_cabstar_count)
+colnames(cabin_counts)[1] <- "Port-side Cabins"
+colnames(cabin_counts)[2] <- "Starboard Cabins"
+
+cabin_counts
+```
+
+So we've identified that there were 4,206 passengers in port-side cabins and 4,288 passengers in starboard cabins.
+
+Now, let's break down how many passengers from each side of the ship were transported. Did the anomaly occur on a specific side of the ship?
+
+```{r}
+cabin_transpo_data <- select(space_titanic_train, Transported, Cabin)
+
+port_transpo_data <- cabin_transpo_data %>%
+                     drop_na() %>%
+                     filter(!grepl("S$", Cabin)) %>%
+                     filter(Transported == TRUE)
+
+ptd_count <- count(port_transpo_data)
+
+star_transpo_data <- cabin_transpo_data %>%
+                     drop_na() %>%
+                     filter(!grepl("P$", Cabin)) %>%
+                     filter(Transported == TRUE)
+
+std_count <- count(star_transpo_data)
+
+transpo_cabin_counts <- data.frame(ptd_count, std_count)
+colnames(transpo_cabin_counts)[1] <- "Port-side Cabins"
+colnames(transpo_cabin_counts)[2] <- "Starboard Cabins"
+
+transpo_cabin_counts
+```
+
+Interesting find! It seems that more passengers staying on the starboard side of the ship were transported, almost 500 more to be exact. While this doesn't necessarily tell us that the anomaly occurred on one side of the ship, we could theorize that it initially occurred on this side of the ship.
+
+That still doesn't tell us why so many passengers from Europa were impacted by the anomaly. So, of the Europa passengers transported, how many were staying port side versus starboard side?
+
+```{r}
+europa_cabin_data <- select(space_titanic_train, Transported, Cabin, HomePlanet)
+
+port_europa_data <- europa_cabin_data %>%
+                     drop_na() %>%
+                     filter(!grepl("S$", Cabin)) %>%
+                     filter(Transported == TRUE) %>%
+                     filter(HomePlanet == "Europa")
+
+ped_counts <- count(port_europa_data)
+
+star_europa_data <- europa_cabin_data %>%
+                     drop_na() %>%
+                     filter(!grepl("P$", Cabin)) %>%
+                     filter(Transported == TRUE) %>%
+                     filter(HomePlanet == "Europa")
+
+sed_counts <- count(star_europa_data)
+
+europa_cabin_counts <- data.frame(ped_counts, sed_counts)
+colnames(europa_cabin_counts)[1] <- "Europa Port-side Cabins"
+colnames(europa_cabin_counts)[2] <- "Europa Starboard Cabins"
+
+europa_cabin_counts
+```
+
+Based on these numbers, 30% of Europa passengers on the port-side of the ship were transported, while 33% of Europa passengers on the starboard side were transported.
+
+Unfortunately, this doesn't point to the anomaly occuring specifically on one side of the ship.
+
+**Spaceship Titanic Analysis Summary**
+
+With the data we were able to dig up, unfortunately, we can't find a specific correlation as to why certain passengers were transported with simple analysis. However, there are a few notable data points to consider:
+
+-   More starboard cabin passengers were impacted by the anomaly
+
+-   Passengers from Europa were impacted the most by the anomaly (approximately 65% of passengers transported were from Europa)
+
+-   Age did not have any impact on whether or not someone was transported
+
+-   However, we were able to extrapolate that the average age of someone who was transported was 26, while the average of someone who wasn't was 28
